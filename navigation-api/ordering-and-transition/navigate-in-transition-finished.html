@@ -32,7 +32,7 @@ promise_test(async t => {
   }));
 
   navigation.addEventListener("navigate", e => {
-    e.transitionWhile(Promise.resolve());
+    e.intercept();
 
     if (location.hash === "#1") {
       fromHash1 = navigation.currentEntry;
