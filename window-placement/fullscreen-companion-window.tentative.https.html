@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<meta name=timeout content=long>
+<!-- user agents are not required to support open features other than `noopener`
+     and on some platforms position and size features don't make sense -->
+<meta name="flags" content="may">
+<title>Multi-Screen Window Placement test: Fullscreen Companion Window</title>
+<link rel="help" href="https://w3c.github.io/window-placement">
+This test uses multi-screen details to request fullscreen and open a pop-up<br>
+(companion window) in the same user activation.<br>
+It runs automated or manually with `wpt serve` and a compatible browser.<br><br>
+<button id="setUpButton">Request screen details</button>
+<ul id="popupButtons"></ul>
+<button id="cleanUpButton">Close any open popups</button><br>
+<input id="autoCleanUp" type="checkbox" checked=true>Auto-close popups</input>
+<ul id="logger"></ul>
+<script src="/resources/testharness.js"></script>
+<script src="/resources/testharnessreport.js"></script>
+<script src="/resources/testdriver.js"></script>
+<script src="/resources/testdriver-vendor.js"></script>
+<script src="resources/helpers.js"></script>
+
+<script>
+'use strict';
+let popups = [];
+
+cleanUpButton.addEventListener('click', async () => {
+  popups.forEach(p => p.close());
+});
+
+async function testPopupOnScreen(popupTest, screen) {
+  // Show a popup child window on the associated screen.
+  const left = screen.availLeft + Math.floor(screen.availWidth / 2) - 150;
+  const top = screen.availTop + Math.floor(screen.availHeight / 2) - 50;
+  log(`Opening a popup on '${screen.label}' at (${left}, ${top})`);
+  let popup = window.open(
+      '/resources/blank.html', '',
+      `left=${left},top=${top},width=300,height=100`);
+  assert_true(popup !== null);
+  assert_true(!popup.closed);
+  if (popup === null)
+    return;
+  popups.push(popup);
+  if (autoCleanUp.checked)
+    popupTest.add_cleanup(popup.close);
+  // TODO(crbug.com/1336439): popup.screenX and popup.screenY should be checked
+  // similar to the `multi-screen-window-open` test. However they are 0 on
+  // some platforms. For now this test only tests that the popup was created
+  // (i.e. not blocked).
+}
+
+async function testFullscreenCompanionWindowOnScreens(popupTest,
+  fullScreen, popupScreen) {
+  await document.documentElement.requestFullscreen({ screen: fullScreen });
+  await testPopupOnScreen(popupTest, popupScreen, fullScreen);
+}
+
+promise_test(async setUpTest => {
+  await setUpWindowPlacement(setUpTest, setUpButton);
+  const screenDetails = await getScreenDetails();
+  assert_true(!!screenDetails, 'Error getting screen details');
+  assert_greater_than(screenDetails.screens.length, 1,
+   'This test requires two or more screens.');
+  for (const s of screenDetails.screens) {
+    // Use any other screen other than `s` for fullscreen.
+    const otherScreen = screenDetails.screens.find(screen => screen !== s);
+    let testName =
+      `Fullscreen on ${otherScreen.label} and open popup on '${s.label}'`;
+    promise_test(async popupTest => {
+      const button = document.createElement('button');
+      button.innerHTML = testName;
+      const entry = document.createElement('li');
+      entry.appendChild(button);
+      popupButtons.appendChild(entry);
+      const popupWatcher = new EventWatcher(popupTest, button, ['click']);
+      const popupClick = popupWatcher.wait_for('click');
+      try {  // Support manual testing where test_driver is not running.
+        await test_driver.click(button);
+      } catch {
+      }
+      await popupClick;
+      button.disabled = true;
+      await testFullscreenCompanionWindowOnScreens(popupTest, otherScreen, s);
+    }, testName);
+  }
+}, 'Use multi-screen details to request fullscreen and open a pop-up in the same user activation.');
+</script>
